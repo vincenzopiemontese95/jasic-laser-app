@@ -36,18 +36,21 @@ def calcola_parametri(materiale, giunto, spessore_target, diametro_target):
         "Outer Joint": 0.78
     }
     
-    # 1. Calcolo Potenza (arrotondata alla decina)
+    # 1. Potenza e Wobble (Crescono con lo spessore)
     ratio_spessore = spessore_target / base['Spessore']
     potenza_raw = base['Potenza'] * (ratio_spessore ** 1.15) * moltiplicatori[giunto]
-    # Arrotondamento alla decina: 10 * round(valore / 10)
     potenza_finale = int(10 * round(min(potenza_raw, 2000) / 10))
     
-    # 2. Wobble e Focus
     wobble_w = min(base['Wobble_W'] * (ratio_spessore ** 0.4), 4.5)
     focus_stimato = max(base['Focus'] - (0.2 * (ratio_spessore - 1)), -2.0)
     
-    # 3. Velocità Filo adattata al diametro
-    v_filo_base = base['V_Filo'] * ratio_spessore
+    # 2. CORREZIONE LOGICA VELOCITÀ FILO
+    # Più aumenta lo spessore, più la velocità del filo deve essere controllata (diminuita) 
+    # per evitare accumuli freddi, dato che la passata manuale è più lenta.
+    # Usiamo una radice inversa per far scendere la velocità gradualmente.
+    v_filo_base = base['V_Filo'] / (ratio_spessore ** 0.3)
+    
+    # Adattamento al diametro (questa fisica resta valida: filo grosso = meno velocità)
     area_ratio = (base['Diametro_Filo'] / diametro_target) ** 2
     v_filo_finale = int(v_filo_base * area_ratio)
     
@@ -59,7 +62,7 @@ def calcola_parametri(materiale, giunto, spessore_target, diametro_target):
         "Focus (mm)": round(focus_stimato, 1)
     }
 
-# --- INTERFACCIA ---
+# --- INTERFACCIA (Invariata per il resto) ---
 st.title("⚡ Jasic Laser Sinergic Pro")
 st.markdown(f"**Hardware:** Raycus 2kW | Torcia WSX HD31")
 
@@ -81,7 +84,6 @@ if choice == "Calcolatore Operatore":
         if res:
             st.success(f"Parametri per {mat} {spessore}mm con filo {diametro_filo}mm")
             c1, c2, c3 = st.columns(3)
-            # Visualizzazione potenza (sempre multiplo di 10)
             c1.metric("Potenza", f"{res['Potenza (W)']} W")
             c2.metric("Wobble L", f"{res['Wobble Width (mm)']} mm")
             c3.metric("Wobble F", f"{res['Wobble Freq (Hz)']} Hz")
@@ -95,13 +97,11 @@ if choice == "Calcolatore Operatore":
 
 elif choice == "Area Amministratore":
     st.header("⚙️ Configurazione e Correzione")
-    
     with st.expander("➕ Aggiungi Nuovo Parametro Reale"):
         with st.form("admin_form"):
             new_mat = st.text_input("Materiale", value="Acciaio Inox")
             new_giunto = st.selectbox("Giunto", ["Butt Joint", "Full penetration", "Inner Joint", "Outer Joint"])
             new_spessore = st.number_input("Spessore (mm)", value=1.0, step=0.1)
-            # Potenza con step di 10W
             new_potenza = st.number_input("Potenza (W)", min_value=0, max_value=2000, value=450, step=10)
             new_w_w = st.number_input("Wobble Width (mm)", value=2.5)
             new_w_f = st.number_input("Wobble Freq (Hz)", value=300)
@@ -110,7 +110,6 @@ elif choice == "Area Amministratore":
             new_focus = st.slider("Focus (mm)", min_value=-2.0, max_value=0.0, value=-0.5, step=0.1)
             
             if st.form_submit_button("Salva nel Database"):
-                # Arrotonda anche in fase di salvataggio per sicurezza
                 nuovo_dato = {
                     "Materiale": new_mat, "Giunto": new_giunto, "Spessore": new_spessore,
                     "Potenza": int(10 * round(new_potenza / 10)), 
@@ -122,12 +121,9 @@ elif choice == "Area Amministratore":
                 st.rerun()
 
     st.subheader("📝 Modifica o Elimina Dati")
-    st.info("I valori di potenza verranno corretti alla decina più vicina al salvataggio.")
     edited_df = st.data_editor(st.session_state.db_parametri, num_rows="dynamic")
-    
     if st.button("Salva Modifiche Tabella"):
-        # Assicura che la potenza sia arrotondata anche dopo modifica manuale in tabella
         edited_df['Potenza'] = edited_df['Potenza'].apply(lambda x: int(10 * round(float(x) / 10)))
         st.session_state.db_parametri = edited_df
-        st.success("Database aggiornato con arrotondamento potenza!")
+        st.success("Database aggiornato!")
         st.rerun()
