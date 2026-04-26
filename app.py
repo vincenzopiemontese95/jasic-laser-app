@@ -36,23 +36,26 @@ def calcola_parametri(materiale, giunto, spessore_target, diametro_target):
         "Outer Joint": 0.78
     }
     
-    # 1. Calcolo Potenza e Wobble basati sullo spessore
+    # 1. Calcolo Potenza (arrotondata alla decina)
     ratio_spessore = spessore_target / base['Spessore']
-    potenza = base['Potenza'] * (ratio_spessore ** 1.15) * moltiplicatori[giunto]
+    potenza_raw = base['Potenza'] * (ratio_spessore ** 1.15) * moltiplicatori[giunto]
+    # Arrotondamento alla decina: 10 * round(valore / 10)
+    potenza_finale = int(10 * round(min(potenza_raw, 2000) / 10))
+    
+    # 2. Wobble e Focus
     wobble_w = min(base['Wobble_W'] * (ratio_spessore ** 0.4), 4.5)
     focus_stimato = max(base['Focus'] - (0.2 * (ratio_spessore - 1)), -2.0)
     
-    # 2. Calcolo Velocità Filo adattata al nuovo diametro
-    # Formula: V1 * D1^2 = V2 * D2^2  => V2 = V1 * (D1/D2)^2
+    # 3. Velocità Filo adattata al diametro
     v_filo_base = base['V_Filo'] * ratio_spessore
     area_ratio = (base['Diametro_Filo'] / diametro_target) ** 2
-    v_filo_finale = v_filo_base * area_ratio
+    v_filo_finale = int(v_filo_base * area_ratio)
     
     return {
-        "Potenza (W)": int(min(potenza, 2000)),
+        "Potenza (W)": potenza_finale,
         "Wobble Width (mm)": round(wobble_w, 1),
         "Wobble Freq (Hz)": int(base['Wobble_F']),
-        "Velocità Filo (cm/min)": int(v_filo_finale),
+        "Velocità Filo (cm/min)": v_filo_finale,
         "Focus (mm)": round(focus_stimato, 1)
     }
 
@@ -78,6 +81,7 @@ if choice == "Calcolatore Operatore":
         if res:
             st.success(f"Parametri per {mat} {spessore}mm con filo {diametro_filo}mm")
             c1, c2, c3 = st.columns(3)
+            # Visualizzazione potenza (sempre multiplo di 10)
             c1.metric("Potenza", f"{res['Potenza (W)']} W")
             c2.metric("Wobble L", f"{res['Wobble Width (mm)']} mm")
             c3.metric("Wobble F", f"{res['Wobble Freq (Hz)']} Hz")
@@ -97,7 +101,8 @@ elif choice == "Area Amministratore":
             new_mat = st.text_input("Materiale", value="Acciaio Inox")
             new_giunto = st.selectbox("Giunto", ["Butt Joint", "Full penetration", "Inner Joint", "Outer Joint"])
             new_spessore = st.number_input("Spessore (mm)", value=1.0, step=0.1)
-            new_potenza = st.number_input("Potenza (W)", value=450)
+            # Potenza con step di 10W
+            new_potenza = st.number_input("Potenza (W)", min_value=0, max_value=2000, value=450, step=10)
             new_w_w = st.number_input("Wobble Width (mm)", value=2.5)
             new_w_f = st.number_input("Wobble Freq (Hz)", value=300)
             new_v_f = st.number_input("Velocità Filo (cm/min)", value=80)
@@ -105,9 +110,11 @@ elif choice == "Area Amministratore":
             new_focus = st.slider("Focus (mm)", min_value=-2.0, max_value=0.0, value=-0.5, step=0.1)
             
             if st.form_submit_button("Salva nel Database"):
+                # Arrotonda anche in fase di salvataggio per sicurezza
                 nuovo_dato = {
                     "Materiale": new_mat, "Giunto": new_giunto, "Spessore": new_spessore,
-                    "Potenza": new_potenza, "Wobble_W": new_w_w, "Wobble_F": new_w_f, 
+                    "Potenza": int(10 * round(new_potenza / 10)), 
+                    "Wobble_W": new_w_w, "Wobble_F": new_w_f, 
                     "V_Filo": new_v_f, "Diametro_Filo": new_d_f, "Focus": new_focus
                 }
                 st.session_state.db_parametri = pd.concat([st.session_state.db_parametri, pd.DataFrame([nuovo_dato])], ignore_index=True)
@@ -115,9 +122,12 @@ elif choice == "Area Amministratore":
                 st.rerun()
 
     st.subheader("📝 Modifica o Elimina Dati")
+    st.info("I valori di potenza verranno corretti alla decina più vicina al salvataggio.")
     edited_df = st.data_editor(st.session_state.db_parametri, num_rows="dynamic")
     
     if st.button("Salva Modifiche Tabella"):
+        # Assicura che la potenza sia arrotondata anche dopo modifica manuale in tabella
+        edited_df['Potenza'] = edited_df['Potenza'].apply(lambda x: int(10 * round(float(x) / 10)))
         st.session_state.db_parametri = edited_df
-        st.success("Database aggiornato!")
+        st.success("Database aggiornato con arrotondamento potenza!")
         st.rerun()
