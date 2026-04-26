@@ -83,4 +83,36 @@ if choice == "Calcolatore Operatore":
             
             c4, c5, c6 = st.columns(3)
             c4.metric("Velocità Filo", f"{res['Velocità Filo (cm/min)']} cm/min")
-            c5.metric("Ø Filo", f"{
+            c5.metric("Ø Filo", f"{res['Diametro Filo (mm)']} mm")
+            c6.metric("Focus", f"{res['Focus (mm)']} mm")
+        else:
+            st.error("Dati non disponibili.")
+
+elif choice == "Area Amministratore":
+    st.header("⚙️ Configurazione Sistema")
+    st.info("Qui puoi inserire i parametri reali trovati durante i test.")
+    
+    with st.form("admin_form"):
+        new_mat = st.text_input("Materiale", value="Acciaio Inox")
+        new_giunto = st.selectbox("Giunto", ["Butt Joint", "Full penetration", "Inner Joint", "Outer Joint"])
+        new_spessore = st.number_input("Spessore (mm)", value=1.0, step=0.1)
+        new_potenza = st.number_input("Potenza (W)", value=450)
+        new_w_w = st.number_input("Wobble Width (mm)", value=2.5)
+        new_w_f = st.number_input("Wobble Freq (Hz)", value=300)
+        new_v_f = st.number_input("Velocità Filo (cm/min)", value=80)
+        # Selezione diametro filo fissa
+        new_d_f = st.selectbox("Diametro Filo (mm)", [0.8, 1.0, 1.2, 1.6])
+        # Focus da 0 a -2
+        new_focus = st.slider("Posizionamento Focus (mm)", min_value=-2.0, max_value=0.0, value=-0.5, step=0.1)
+        
+        if st.form_submit_button("Salva nel Database"):
+            nuovo_dato = {
+                "Materiale": new_mat, "Giunto": new_giunto, "Spessore": new_spessore,
+                "Potenza": new_potenza, "Wobble_W": new_w_w, "Wobble_F": new_w_f, 
+                "V_Filo": new_v_f, "Diametro_Filo": new_d_f, "Focus": new_focus
+            }
+            st.session_state.db_parametri = pd.concat([st.session_state.db_parametri, pd.DataFrame([nuovo_dato])], ignore_index=True)
+            st.success("Database aggiornato!")
+
+    st.subheader("Database Attuale")
+    st.dataframe(st.session_state.db_parametri)
